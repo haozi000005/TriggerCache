@@ -1,4 +1,4 @@
-package com.moon.cache.trigger;
+package com.sharing.common.cache;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -7,6 +7,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @description 缓存
@@ -26,31 +27,38 @@ public class TriggerCachePool implements Runnable{
 	
 	ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
 	ExecutorService cachedPool = Executors.newCachedThreadPool();
-	int click = timeTrigger;
+	AtomicInteger click = new AtomicInteger(timeTrigger);
 	
 	LinkedBlockingQueue<Object> queue = new LinkedBlockingQueue<Object>();
 	CacheTrigger trigger = null;
 	
 	public TriggerCachePool(CacheTrigger trigger) {
-		this.trigger = trigger;
-		scheduledExecutor.scheduleAtFixedRate(this, 0, 1, TimeUnit.SECONDS);
+		this(trigger, TimeUnit.SECONDS);
 	}
 	
 	public TriggerCachePool(int timeTrigger, int sizeTrigger, CacheTrigger trigger) {
-		this.trigger = trigger;
-		this.timeTrigger = timeTrigger;
-		this.sizeTrigger = sizeTrigger;
-		click = timeTrigger;
-		scheduledExecutor.scheduleAtFixedRate(this, 0, 1, TimeUnit.SECONDS);
+		this(timeTrigger, sizeTrigger, trigger, TimeUnit.SECONDS);
 	}
 	
 	public TriggerCachePool(int timeTrigger, int sizeTrigger, boolean batch, CacheTrigger trigger) {
+		this(timeTrigger, sizeTrigger, batch, trigger, TimeUnit.SECONDS);
+	}
+	
+	public TriggerCachePool(CacheTrigger trigger, TimeUnit timeUnit) {
+		this(10, 100, false, trigger, timeUnit);
+	}
+	
+	public TriggerCachePool(int timeTrigger, int sizeTrigger, CacheTrigger trigger, TimeUnit timeUnit) {
+		this(timeTrigger, sizeTrigger, false, trigger, timeUnit);
+	}
+	
+	public TriggerCachePool(int timeTrigger, int sizeTrigger, boolean batch, CacheTrigger trigger, TimeUnit timeUnit) {
 		this.trigger = trigger;
 		this.timeTrigger = timeTrigger;
 		this.sizeTrigger = sizeTrigger;
 		this.batch = batch;
-		click = timeTrigger;
-		scheduledExecutor.scheduleAtFixedRate(this, 0, 1, TimeUnit.SECONDS);
+		click = new AtomicInteger(timeTrigger);
+		scheduledExecutor.scheduleAtFixedRate(this, 0, 1, timeUnit);
 	}
 	
 	public void addEvent(Object t) {
@@ -58,7 +66,7 @@ public class TriggerCachePool implements Runnable{
 		int size = size();
 		if (size >= sizeTrigger) {
 			doTrigger();
-			click = timeTrigger;//恢复计数
+			click = new AtomicInteger(timeTrigger);//恢复计数
 		}
 	}
 	
@@ -69,27 +77,13 @@ public class TriggerCachePool implements Runnable{
 	public int size() {
 		return queue.size();
 	}
-	
-	public int getTimeTrigger() {
-		return timeTrigger;
-	}
-	public void setTimeTrigger(int timeTrigger) {
-		this.timeTrigger = timeTrigger;
-	}
-	public int getSizeTrigger() {
-		return sizeTrigger;
-	}
-	public void setSizeTrigger(int sizeTrigger) {
-		this.sizeTrigger = sizeTrigger;
-	}
 
 	@Override
 	public void run() {
-		if (click == 0) {
+		if (click.getAndDecrement() <= 0) {
 			doTrigger();
-			click = timeTrigger;
+			click = new AtomicInteger(timeTrigger);
 		}
-		click --;
 	}
 	
 	private void doTrigger() {
